@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Image Crop & Resize</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f1117;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    background: #1a1d27;
+    border-bottom: 1px solid #2a2d3a;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  header h1 {
+    font-size: 17px;
+    font-weight: 600;
+    color: #fff;
+  }
+
+  header span.tag {
+    font-size: 11px;
+    background: #29bfff22;
+    color: #29bfff;
+    border: 1px solid #29bfff44;
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+  }
+
+  .layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Sidebar ───────────────────────────────────────── */
+  aside {
+    width: 280px;
+    min-width: 280px;
+    background: #1a1d27;
+    border-right: 1px solid #2a2d3a;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    overflow-y: auto;
+  }
+
+  .section-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    color: #666;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 13px; color: #aaa; }
+
+  input[type="text"], input[type="number"], select {
+    background: #0f1117;
+    border: 1px solid #2a2d3a;
+    color: #e0e0e0;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 14px;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  input[type="text"]:focus, input[type="number"]:focus, select:focus {
+    border-color: #29bfff;
+  }
+
+  .dim-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 6px;
+  }
+  .dim-row span { text-align: center; color: #555; font-size: 16px; }
+
+  .size-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px;
+    align-items: center;
+  }
+  .size-row select { width: auto; }
+
+  .upload-zone {
+    border: 2px dashed #2a2d3a;
+    border-radius: 8px;
+    padding: 24px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: #29bfff;
+    background: #29bfff0a;
+  }
+  .upload-zone p { font-size: 13px; color: #666; margin-top: 6px; }
+  .upload-zone strong { font-size: 14px; color: #aaa; }
+  #file-input { display: none; }
+
+  .btn {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 7px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn-primary { background: #29bfff; color: #000; }
+  .btn-primary:hover:not(:disabled) { background: #4acfff; }
+  .btn-secondary { background: #2a2d3a; color: #e0e0e0; }
+  .btn-secondary:hover:not(:disabled) { background: #343748; }
+  .btn-success { background: #22c55e; color: #000; }
+  .btn-success:hover:not(:disabled) { background: #34d56e; }
+
+  .info-box {
+    background: #0f1117;
+    border: 1px solid #2a2d3a;
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 12px;
+    color: #666;
+    line-height: 1.6;
+  }
+  .info-box b { color: #aaa; }
+
+  /* ── Canvas area ───────────────────────────────────── */
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    overflow: auto;
+    gap: 16px;
+  }
+
+  #drop-hint {
+    text-align: center;
+    color: #333;
+  }
+  #drop-hint svg { width: 64px; height: 64px; stroke: #333; margin-bottom: 12px; }
+  #drop-hint p { font-size: 15px; }
+
+  .canvas-wrap {
+    position: relative;
+    display: none;
+    cursor: crosshair;
+    user-select: none;
+  }
+
+  #img-canvas {
+    display: block;
+    border-radius: 6px;
+  }
+
+  /* Semi-transparent overlay outside crop */
+  #overlay-canvas {
+    position: absolute;
+    top: 0; left: 0;
+    pointer-events: none;
+    border-radius: 6px;
+  }
+
+  /* Crop selection box */
+  #crop-box {
+    position: absolute;
+    border: 2px solid #29bfff;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.55);
+    cursor: move;
+    display: none;
+  }
+  .handle {
+    position: absolute;
+    width: 10px; height: 10px;
+    background: #fff;
+    border: 2px solid #29bfff;
+    border-radius: 2px;
+  }
+  .handle.nw { top: -5px; left: -5px; cursor: nw-resize; }
+  .handle.ne { top: -5px; right: -5px; cursor: ne-resize; }
+  .handle.sw { bottom: -5px; left: -5px; cursor: sw-resize; }
+  .handle.se { bottom: -5px; right: -5px; cursor: se-resize; }
+  .handle.n  { top: -5px; left: 50%; transform: translateX(-50%); cursor: n-resize; }
+  .handle.s  { bottom: -5px; left: 50%; transform: translateX(-50%); cursor: s-resize; }
+  .handle.w  { left: -5px; top: 50%; transform: translateY(-50%); cursor: w-resize; }
+  .handle.e  { right: -5px; top: 50%; transform: translateY(-50%); cursor: e-resize; }
+
+  .crop-info {
+    position: absolute;
+    top: 6px; left: 6px;
+    background: rgba(0,0,0,0.65);
+    color: #29bfff;
+    font-size: 11px;
+    padding: 3px 7px;
+    border-radius: 4px;
+    pointer-events: none;
+  }
+
+  /* ── Result preview ────────────────────────────────── */
+  .result-panel {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .result-panel h3 { font-size: 13px; color: #666; }
+  #result-canvas {
+    border-radius: 6px;
+    max-width: 320px;
+    max-height: 320px;
+    border: 1px solid #2a2d3a;
+  }
+
+  .status { font-size: 12px; color: #555; text-align: center; }
+  .status.error { color: #f87171; }
+  .status.ok { color: #22c55e; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Image Crop &amp; Resize</h1>
+  <span class="tag">Canvas</span>
+</header>
+
+<div class="layout">
+  <!-- ─── Sidebar ─── -->
+  <aside>
+    <!-- Upload -->
+    <div>
+      <div class="section-title">Source Image</div>
+      <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+        <input type="file" id="file-input" accept="image/*">
+        <strong>Click or drag &amp; drop</strong>
+        <p>PNG, JPEG, WebP, GIF …</p>
+      </div>
+    </div>
+
+    <!-- Dimensions -->
+    <div>
+      <div class="section-title">Output Dimensions</div>
+      <div class="field">
+        <label>Width × Height (px)</label>
+        <div class="dim-row">
+          <input type="number" id="out-w" placeholder="630" min="1" value="630">
+          <span>×</span>
+          <input type="number" id="out-h" placeholder="810" min="1" value="810">
+        </div>
+      </div>
+    </div>
+
+    <!-- File size -->
+    <div>
+      <div class="section-title">Max File Size</div>
+      <div class="field">
+        <label>Target size (leave blank = no limit)</label>
+        <div class="size-row">
+          <input type="number" id="max-size" placeholder="500" min="1">
+          <select id="size-unit">
+            <option value="kb">KB</option>
+            <option value="mb">MB</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Format -->
+    <div>
+      <div class="section-title">Output Format</div>
+      <div class="field">
+        <select id="out-fmt">
+          <option value="image/jpeg">JPEG</option>
+          <option value="image/webp">WebP</option>
+          <option value="image/png">PNG</option>
+        </select>
+      </div>
+      <div class="info-box" style="margin-top:8px" id="fmt-note">
+        JPEG &amp; WebP support quality adjustment to hit size targets.
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div style="display:flex; flex-direction:column; gap:8px; margin-top:auto">
+      <button class="btn btn-primary" id="btn-reset-crop" disabled>Reset Crop Box</button>
+      <button class="btn btn-primary" id="btn-process" disabled>Crop &amp; Resize</button>
+      <button class="btn btn-success" id="btn-download" disabled>Download</button>
+    </div>
+
+    <div class="status" id="status-msg"></div>
+  </aside>
+
+  <!-- ─── Canvas area ─── -->
+  <main>
+    <div id="drop-hint">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+        <polyline points="21 15 16 10 5 21"/>
+      </svg>
+      <p>Upload an image to get started</p>
+    </div>
+
+    <div class="canvas-wrap" id="canvas-wrap">
+      <canvas id="img-canvas"></canvas>
+      <div id="crop-box">
+        <div class="handle nw" data-dir="nw"></div>
+        <div class="handle ne" data-dir="ne"></div>
+        <div class="handle sw" data-dir="sw"></div>
+        <div class="handle se" data-dir="se"></div>
+        <div class="handle n"  data-dir="n"></div>
+        <div class="handle s"  data-dir="s"></div>
+        <div class="handle w"  data-dir="w"></div>
+        <div class="handle e"  data-dir="e"></div>
+        <div class="crop-info" id="crop-info"></div>
+      </div>
+    </div>
+
+    <div class="result-panel" id="result-panel">
+      <h3>Preview (scaled to fit)</h3>
+      <canvas id="result-canvas"></canvas>
+    </div>
+  </main>
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────
+let sourceImg = null;       // HTMLImageElement
+let displayScale = 1;       // canvas px ÷ image px
+let crop = { x:0, y:0, w:0, h:0 }; // in image-space pixels
+let resultBlob = null;
+let resultExt  = 'jpg';
+
+// ─── DOM refs ────────────────────────────────────────────────────────────
+const fileInput   = document.getElementById('file-input');
+const uploadZone  = document.getElementById('upload-zone');
+const dropHint    = document.getElementById('drop-hint');
+const canvasWrap  = document.getElementById('canvas-wrap');
+const imgCanvas   = document.getElementById('img-canvas');
+const cropBox     = document.getElementById('crop-box');
+const cropInfo    = document.getElementById('crop-info');
+const resultPanel = document.getElementById('result-panel');
+const resultCanvas= document.getElementById('result-canvas');
+const statusMsg   = document.getElementById('status-msg');
+const btnProcess  = document.getElementById('btn-process');
+const btnDownload = document.getElementById('btn-download');
+const btnReset    = document.getElementById('btn-reset-crop');
+const outW        = document.getElementById('out-w');
+const outH        = document.getElementById('out-h');
+const maxSize     = document.getElementById('max-size');
+const sizeUnit    = document.getElementById('size-unit');
+const outFmt      = document.getElementById('out-fmt');
+const fmtNote     = document.getElementById('fmt-note');
+
+const ctx = imgCanvas.getContext('2d');
+
+// ─── Upload handling ─────────────────────────────────────────────────────
+fileInput.addEventListener('change', e => loadFile(e.target.files[0]));
+
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('image/')) loadFile(f);
+});
+
+// Global drop on main area too
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('image/')) loadFile(f);
+});
+
+function loadFile(file) {
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  const img  = new Image();
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    sourceImg = img;
+    renderToCanvas();
+    resetCrop();
+    dropHint.style.display = 'none';
+    canvasWrap.style.display = 'inline-block';
+    resultPanel.style.display = 'none';
+    btnProcess.disabled = false;
+    btnReset.disabled   = false;
+    btnDownload.disabled = true;
+    resultBlob = null;
+    setStatus('');
+  };
+  img.src = url;
+}
+
+// ─── Canvas rendering ────────────────────────────────────────────────────
+const MAX_DISPLAY = 850; // max display side in px
+
+function renderToCanvas() {
+  const iw = sourceImg.naturalWidth;
+  const ih = sourceImg.naturalHeight;
+  const maxSide = Math.max(iw, ih);
+  displayScale = maxSide > MAX_DISPLAY ? MAX_DISPLAY / maxSide : 1;
+  imgCanvas.width  = Math.round(iw * displayScale);
+  imgCanvas.height = Math.round(ih * displayScale);
+  ctx.clearRect(0, 0, imgCanvas.width, imgCanvas.height);
+  ctx.drawImage(sourceImg, 0, 0, imgCanvas.width, imgCanvas.height);
+}
+
+// ─── Crop box ────────────────────────────────────────────────────────────
+function getAspect() {
+  const w = parseInt(outW.value) || 1;
+  const h = parseInt(outH.value) || 1;
+  return w / h;
+}
+
+function resetCrop() {
+  const iw = sourceImg.naturalWidth;
+  const ih = sourceImg.naturalHeight;
+  const aspect = getAspect();
+  // Fit largest possible crop centred on image
+  let cw, ch;
+  if (iw / ih > aspect) { ch = ih; cw = ch * aspect; }
+  else                   { cw = iw; ch = cw / aspect; }
+  crop = {
+    x: Math.round((iw - cw) / 2),
+    y: Math.round((ih - ch) / 2),
+    w: Math.round(cw),
+    h: Math.round(ch)
+  };
+  syncCropBox();
+}
+
+function syncCropBox() {
+  const ds = displayScale;
+  cropBox.style.left   = (crop.x * ds) + 'px';
+  cropBox.style.top    = (crop.y * ds) + 'px';
+  cropBox.style.width  = (crop.w * ds) + 'px';
+  cropBox.style.height = (crop.h * ds) + 'px';
+  cropBox.style.display = 'block';
+  cropInfo.textContent = `${Math.round(crop.w)} × ${Math.round(crop.h)}`;
+}
+
+// ─── Drag logic ──────────────────────────────────────────────────────────
+let drag = null; // { type: 'move'|dir, startX, startY, origCrop }
+
+cropBox.addEventListener('mousedown', startDrag);
+cropBox.querySelectorAll('.handle').forEach(h => h.addEventListener('mousedown', e => {
+  e.stopPropagation();
+  startDrag(e, h.dataset.dir);
+}));
+
+function startDrag(e, dir = 'move') {
+  e.preventDefault();
+  drag = {
+    type: dir,
+    startX: e.clientX,
+    startY: e.clientY,
+    origCrop: { ...crop }
+  };
+  document.addEventListener('mousemove', onDrag);
+  document.addEventListener('mouseup',   endDrag);
+}
+
+function onDrag(e) {
+  if (!drag) return;
+  const ds = displayScale;
+  const dx = (e.clientX - drag.startX) / ds;
+  const dy = (e.clientY - drag.startY) / ds;
+  const o  = drag.origCrop;
+  const iw = sourceImg.naturalWidth;
+  const ih = sourceImg.naturalHeight;
+  const aspect = getAspect();
+
+  let { x, y, w, h } = o;
+
+  if (drag.type === 'move') {
+    x = clamp(o.x + dx, 0, iw - w);
+    y = clamp(o.y + dy, 0, ih - h);
+  } else {
+    // resize with aspect lock
+    const d = drag.type;
+    if (d === 'se' || d === 'e' || d === 's') {
+      w = Math.max(10, o.w + (d.includes('e') ? dx : dy * aspect));
+      h = w / aspect;
+    } else if (d === 'nw' || d === 'n' || d === 'w') {
+      const delta = d.includes('w') ? -dx : -dy * aspect;
+      w = Math.max(10, o.w + delta);
+      h = w / aspect;
+      x = o.x + o.w - w;
+      y = o.y + o.h - h;
+    } else if (d === 'ne') {
+      w = Math.max(10, o.w + dx);
+      h = w / aspect;
+      y = o.y + o.h - h;
+    } else if (d === 'sw') {
+      w = Math.max(10, o.w - dx);
+      h = w / aspect;
+      x = o.x + o.w - w;
+    }
+    // clamp to image bounds
+    x = clamp(x, 0, iw - 1);
+    y = clamp(y, 0, ih - 1);
+    w = clamp(w, 10, iw - x);
+    h = w / aspect;
+    if (y + h > ih) { h = ih - y; w = h * aspect; }
+  }
+
+  crop = { x, y, w, h };
+  syncCropBox();
+}
+
+function endDrag() {
+  drag = null;
+  document.removeEventListener('mousemove', onDrag);
+  document.removeEventListener('mouseup',   endDrag);
+}
+
+function clamp(v, lo, hi) { return Math.min(Math.max(v, lo), hi); }
+
+// ─── Dimension change → reset crop aspect ────────────────────────────────
+[outW, outH].forEach(el => el.addEventListener('change', () => { if (sourceImg) resetCrop(); }));
+
+btnReset.addEventListener('click', () => { if (sourceImg) resetCrop(); });
+
+// ─── Format note ─────────────────────────────────────────────────────────
+outFmt.addEventListener('change', () => {
+  if (outFmt.value === 'image/png') {
+    fmtNote.textContent = 'PNG is lossless — file size cannot be reduced by quality; size target will not apply.';
+  } else {
+    fmtNote.textContent = 'JPEG & WebP support quality adjustment to hit size targets.';
+  }
+});
+
+// ─── Process ─────────────────────────────────────────────────────────────
+btnProcess.addEventListener('click', processImage);
+
+async function processImage() {
+  if (!sourceImg) return;
+
+  const targetW  = parseInt(outW.value);
+  const targetH  = parseInt(outH.value);
+  if (!targetW || !targetH) { setStatus('Enter valid output dimensions.', 'error'); return; }
+
+  const fmt = outFmt.value;
+  const maxBytes = getMaxBytes();
+
+  setStatus('Processing…');
+  btnProcess.disabled = true;
+
+  // 1. Crop from source
+  const offscreen = document.createElement('canvas');
+  offscreen.width  = targetW;
+  offscreen.height = targetH;
+  const offCtx = offscreen.getContext('2d');
+  offCtx.drawImage(
+    sourceImg,
+    crop.x, crop.y, crop.w, crop.h,
+    0, 0, targetW, targetH
+  );
+
+  // 2. Encode with quality search
+  let blob;
+  if (fmt === 'image/png' || !maxBytes) {
+    blob = await canvasToBlob(offscreen, fmt, 0.95);
+  } else {
+    blob = await compressToSize(offscreen, fmt, maxBytes);
+  }
+
+  resultBlob = blob;
+  resultExt  = fmt === 'image/jpeg' ? 'jpg' : fmt === 'image/webp' ? 'webp' : 'png';
+
+  // 3. Show preview
+  const bmp = await createImageBitmap(blob);
+  resultCanvas.width  = bmp.width;
+  resultCanvas.height = bmp.height;
+  const rCtx = resultCanvas.getContext('2d');
+  rCtx.drawImage(bmp, 0, 0);
+  resultPanel.style.display = 'flex';
+
+  const kb = (blob.size / 1024).toFixed(1);
+  setStatus(`Done — ${targetW}×${targetH}px · ${kb} KB · ${fmt.split('/')[1].toUpperCase()}`, 'ok');
+  btnProcess.disabled  = false;
+  btnDownload.disabled = false;
+}
+
+function getMaxBytes() {
+  const v = parseFloat(maxSize.value);
+  if (!v) return null;
+  return sizeUnit.value === 'mb' ? v * 1024 * 1024 : v * 1024;
+}
+
+function canvasToBlob(canvas, type, quality) {
+  return new Promise(res => canvas.toBlob(res, type, quality));
+}
+
+async function compressToSize(canvas, fmt, maxBytes) {
+  let lo = 0.01, hi = 1.0, best = null;
+  for (let i = 0; i < 12; i++) {
+    const mid = (lo + hi) / 2;
+    const b   = await canvasToBlob(canvas, fmt, mid);
+    if (b.size <= maxBytes) { best = b; lo = mid; }
+    else hi = mid;
+    if (hi - lo < 0.005) break;
+  }
+  // if even q=0.01 exceeds target return best effort
+  if (!best) best = await canvasToBlob(canvas, fmt, 0.01);
+  return best;
+}
+
+// ─── Download ────────────────────────────────────────────────────────────
+btnDownload.addEventListener('click', () => {
+  if (!resultBlob) return;
+  const url = URL.createObjectURL(resultBlob);
+  const a   = document.createElement('a');
+  a.href = url;
+  a.download = `cropped_${outW.value}x${outH.value}.${resultExt}`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
+function setStatus(msg, type = '') {
+  statusMsg.textContent = msg;
+  statusMsg.className = 'status' + (type ? ' ' + type : '');
+}
+</script>
+</body>
+</html>
